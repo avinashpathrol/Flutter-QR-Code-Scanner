@@ -1,8 +1,5 @@
-//"ExP3(To9aTr0n$M"
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
-import 'dart:typed_data';
 import 'package:qr_code_scanner/qr_code_scanner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue/flutter_blue.dart';
@@ -43,7 +40,6 @@ class _MyHomePageState extends State<MyHomePage> {
   QRViewController? _controller;
   Barcode? _result;
   String? _mac;
-  String? _passkey;
 
   @override
   void dispose() {
@@ -60,12 +56,22 @@ class _MyHomePageState extends State<MyHomePage> {
         if (_result != null) {
           Map<String, dynamic> data = json.decode(_result!.code ?? "df");
           _mac = data['mac'];
-          startScan(
-              _mac!); // Start scanning for BLE devices with matching MAC address
         }
       });
     });
   }
+
+  // void startScan() {
+  //   setState(() {
+  //     isScanning = true;
+  //   });
+
+  //   scanSubscription = flutterBlue.scan().listen((scanResult) {
+  //     setState(() {
+  //       scanResults[scanResult.device.id] = scanResult;
+  //     });
+  //   }, onDone: stopScan);
+  // }
 
   void startScan(String _mac) {
     setState(() {
@@ -76,66 +82,12 @@ class _MyHomePageState extends State<MyHomePage> {
         .scan(
           timeout: Duration(seconds: 5),
         )
-        .where((scanResult) =>
-            scanResult.device.id.toString().toUpperCase() == _mac.toUpperCase())
-        .listen((scanResult) async {
-      await scanResult.device.connect();
-
-      // Get the advertising data
-      Map<int, List<int>> manufacturerData =
-          await scanResult.advertisementData.manufacturerData;
-      Map<String, List<int>> serviceData =
-          await scanResult.advertisementData.serviceData;
-
-      // Do something with the advertising data
-      print('Manufacturer data: $manufacturerData');
-      print('Service data: $serviceData');
-
+        .where((scanResult) => scanResult.device.id.toString() == _mac)
+        .listen((scanResult) {
       setState(() {
         scanResults[scanResult.device.id] = scanResult;
       });
     }, onDone: stopScan);
-  }
-
-  void _showAdvertisingData(List<Guid> serviceUuids,
-      Map<int, Uint8List> manufacturerData, Map<Guid, Uint8List> serviceData) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        var hex;
-        return AlertDialog(
-          title: Text('Advertising Data'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              if (serviceUuids.isNotEmpty) ...[
-                Text('Service UUIDs:'),
-                for (var uuid in serviceUuids) Text('- $uuid'),
-              ],
-              if (manufacturerData.isNotEmpty) ...[
-                SizedBox(height: 16),
-                Text('Manufacturer Data:'),
-                for (var key in manufacturerData.keys)
-                  Text('- $key: ${hex.encode(manufacturerData[key]!)}'),
-              ],
-              if (serviceData.isNotEmpty) ...[
-                SizedBox(height: 16),
-                Text('Service Data:'),
-                for (var uuid in serviceData.keys)
-                  Text('- $uuid: ${hex.encode(serviceData[uuid]!)}'),
-              ],
-            ],
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('OK'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   void stopScan() {
@@ -148,7 +100,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void connect(BluetoothDevice d) async {
     device = d;
-    await device?.connect();
+    device?.connect();
     setState(() {
       isConnected = true;
     });
@@ -159,6 +111,15 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {
       isConnected = false;
     });
+  }
+
+  void extractPairKey() async {
+    try {
+      await device!.requestMtu(23);
+      print('MTU Requested');
+    } catch (e) {
+      print('Error Requesting MTU: $e');
+    }
   }
 
   @override
@@ -216,16 +177,12 @@ class _MyHomePageState extends State<MyHomePage> {
                 onPressed: isConnected ? disconnect : null,
               ),
             ),
-            // Container(
-            //   child: ElevatedButton(
-            //     child: Text('Extract Pair Key'),
-            //     onPressed: isConnected ? extractPairKey : null,
-            //   ),
-            // ),
-            // ...
-
-            // ...
-
+            Container(
+              child: ElevatedButton(
+                child: Text('Extract Pair Key'),
+                onPressed: isConnected ? extractPairKey : null,
+              ),
+            ),
             Expanded(
               child: ListView(
                 children: scanResults.values
@@ -243,4 +200,10 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
     );
   }
+
+  // @override
+  // void dispose() {
+  //   flutterBlue.stopScan();
+  //   super.dispose();
+  // }
 }
