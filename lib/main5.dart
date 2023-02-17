@@ -1,12 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:flutter/services.dart';
-import 'package:json_tree_viewer/json_tree_viewer.dart';
 import 'package:qr_code_scanner/qr_code_scanner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue/flutter_blue.dart';
-import 'dart:convert';
 
 void main() => runApp(MyApp());
 
@@ -45,9 +42,8 @@ class _MyHomePageState extends State<MyHomePage> {
   Barcode? _result;
   String? _mac;
   String? advertisementDataJson;
-  String? serviceData;
+  var serviceData;
   String? passkey;
-  String? advData;
   @override
   void dispose() {
     _controller?.dispose();
@@ -82,115 +78,22 @@ class _MyHomePageState extends State<MyHomePage> {
         .listen((scanResult) {
       setState(() {
         scanResults[scanResult.device.id] = scanResult;
-        // Extract advertising data
-        var advData = scanResult.advertisementData;
-        if (advData != null) {
-          var serviceData = advData.serviceData;
-          if (serviceData != null) {
-            var seed = serviceData;
-            String? passkey = getPasskeyFromServiceData(
-                scanResult.advertisementData.serviceData);
-            Clipboard.setData(ClipboardData(text: passkey.toString()));
-            print('Passkey copied to clipboard: $passkey');
-            setState(() {
-              this.passkey = passkey.toString();
-              // this.serviceData = serviceData.toString();
-              // this.advData = serviceData.toString();
-            });
-          }
-        }
+        flutterBlue.scan(timeout: Duration(seconds: 5)).listen((scanResult) {
+          setState(() {
+            scanResults[scanResult.device.id] = scanResult;
+            // Extract advertising data
+            var advData = scanResult.advertisementData;
+            // var advData = scanResults[selectedDevice!.id]?.advertisementData;
+            serviceData =
+                scanResults[selectedDevice!.id]?.advertisementData?.serviceData;
+            if (advData != null) {
+              print(
+                  '---------------------------------Advertising data-------------------------: $advData');
+            }
+          });
+        }, onDone: stopScan);
       });
     }, onDone: stopScan);
-  }
-
-  static String getNiceHexArray(List<int> bytes) {
-    return '[${bytes.map((i) => i.toRadixString(16).padLeft(2, '0')).join(', ')}]'
-        .toUpperCase();
-  }
-
-  static String? getPasskeyFromServiceData(Map<String, List<int>> data) {
-    if (data.isEmpty) {
-      return null;
-    }
-    List<String> res = [];
-    data.forEach((id, bytes) {
-      res.add('${id.toUpperCase()}: ${getNiceHexArray(bytes)}');
-    });
-    var rand = getSercureRandom(res.join(', '));
-    var passkey = getSercurePassKey(rand);
-    var passkeyStr = passkey.toString();
-    if (passkeyStr.length < 6) {
-      int shortNum = 6 - passkeyStr.length;
-      for (var i = 0; i < shortNum; i++) {
-        passkeyStr = '0' + passkeyStr.toString();
-      }
-    }
-    return passkeyStr.toString();
-  }
-
-  static int getSercureRandom(
-    String? serviceData,
-  ) {
-    int random = 0;
-    if (serviceData != null) {
-      var serviceDataArray = serviceData.split(':');
-      var idArray = serviceDataArray[0].split('-');
-      var idFirst = idArray[0];
-      var idHex = idFirst.substring(4, 8);
-      // : idFirst;
-      var childArray = serviceDataArray[1].split(',');
-      var childFirst = childArray[0].substring(2, 4);
-      var childSecond = childArray[1].substring(1, 3);
-      var hex = childSecond + childFirst + idHex;
-      // equivalent to Uint32 in c
-      print(int.parse(childSecond.toLowerCase(), radix: 16));
-      print(int.parse(childFirst.toLowerCase(), radix: 16));
-      print(int.parse(childFirst.toLowerCase(), radix: 16));
-      print(hex.toLowerCase());
-      random = int.parse(hex.toLowerCase(), radix: 16);
-      random = random.toUnsigned(32);
-      print(random);
-    }
-
-    return random;
-  }
-
-  static int getSercurePassKey(int rand) {
-    String secure = 'ExP3(To9aTr0n\$M'; // equivalent to char in c
-    int secLen = secure.length;
-    int randIdx = 0;
-    Uint8List pk = Uint8List(4);
-    pk[0] = (rand >> 24) & 0xff;
-    pk[1] = (rand >> 8) & 0xff;
-    pk[2] = (rand >> 16) & 0xff;
-    pk[3] = rand & 0xff;
-    for (int i = 0; i < secLen; i++) {
-      pk[randIdx] ^= secure.codeUnitAt(i);
-      if (++randIdx >= 4) randIdx = 0;
-    }
-    int passKey = (pk[1] << 24) | (pk[3] << 16) | (pk[0] << 8) | pk[2];
-    passKey %= 1000000;
-    return passKey;
-  }
-
-  int generatePasskey(int seed) {
-    final secure = 'ExP3(To9aTr0n\$M';
-    final pk = Uint8List(4);
-    pk[0] = (seed >> 24) & 0xff;
-    pk[1] = (seed >> 8) & 0xff;
-    pk[2] = (seed >> 16) & 0xff;
-    pk[3] = seed & 0xff;
-    var randIdx = 0;
-    for (var c in secure.runes) {
-      pk[randIdx] ^= c;
-      randIdx++;
-      if (randIdx >= 4) {
-        randIdx = 0;
-      }
-    }
-    final passkey =
-        ((pk[1] << 24) | (pk[3] << 16) | (pk[0] << 8) | pk[2]) % 1000000;
-    return passkey;
   }
 
 //  00006a89-0000-1000-8000-00805f9b34fb:[177,70]
@@ -303,7 +206,7 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
             SizedBox(height: 20),
             Text(
-              'Passkey: ${passkey ?? 'Not generated yet'}',
+              'Passkey: $passkey',
               style: TextStyle(fontSize: 20),
             ),
             if (selectedDevice != null &&
@@ -328,33 +231,84 @@ class _MyHomePageState extends State<MyHomePage> {
                 '${scanResults[selectedDevice!.id]?.advertisementData?.serviceData}',
                 style: TextStyle(fontSize: 20),
               ),
-              Container(
-                child: Text(
-                  'Passkey ooo: ${passkey}',
-                  style: TextStyle(fontSize: 20),
-                ),
-              ),
-              SizedBox(
-                height: 30,
-              ),
               Text(
-                'Scan Results:',
+                '${serviceData}',
                 style: TextStyle(fontSize: 20),
               ),
-              Container(
-                child: Text(
-                  'Scan Data: ${{scanResults}}',
-                  style: TextStyle(fontSize: 20),
-                ),
-              ),
-
-              // Container(
-              //   child: JsonTreeViewer(data: {scanResults}),
-              // )
             ],
           ],
         ),
       ),
     );
   }
+
+  // static String getNiceHexArray(List<int> bytes) {
+  //   return '[${bytes.map((i) => i.toRadixString(16).padLeft(2, '0')).join(', ')}]'
+  //       .toUpperCase();
+  // }
+
+  // String? getPasskeyFromServiceData(
+  //     Map<String, List<int>>? data, TargetPlatform android) {
+  //   if (data!.isEmpty) {
+  //     return null;
+  //   }
+  //   List<String> res = [];
+  //   data?.forEach((id, bytes) {
+  //     res.add('${id.toUpperCase()}: ${getNiceHexArray(bytes)}');
+  //   });
+  //   var rand = getSercureRandom(res.join(', '));
+  //   var passkey = getSercurePassKey(rand);
+  //   var passkeyStr = passkey.toString();
+  //   if (passkeyStr.length < 6) {
+  //     int shortNum = 6 - passkeyStr.length;
+  //     for (var i = 0; i < shortNum; i++) {
+  //       passkeyStr = '0' + passkeyStr.toString();
+  //     }
+  //   }
+  //   return passkeyStr.toString();
+  // }
+
+  // static int getSercureRandom(String? serviceData) {
+  //   int random = 0;
+  //   if (serviceData != null) {
+  //     var serviceDataArray = serviceData.split(':');
+  //     var idArray = serviceDataArray[0].split('-');
+  //     var idFirst = idArray[0];
+  //     // var idHex = platform == TargetPlatform.android
+  //     // ? idFirst.substring(4, 8)
+  //     // : idFirst;
+  //     var childArray = serviceDataArray[1].split(',');
+  //     var childFirst = childArray[0].substring(2, 4);
+  //     var childSecond = childArray[1].substring(1, 3);
+  //     var hex = childSecond + childFirst;
+  //     // equivalent to Uint32 in c
+  //     print(int.parse(childSecond.toLowerCase(), radix: 16));
+  //     print(int.parse(childFirst.toLowerCase(), radix: 16));
+  //     print(int.parse(childFirst.toLowerCase(), radix: 16));
+  //     print(hex.toLowerCase());
+  //     random = int.parse(hex.toLowerCase(), radix: 16);
+  //     random = random.toUnsigned(32);
+  //     print(random);
+  //   }
+
+  //   return random;
+  // }
+
+  // static int getSercurePassKey(int rand) {
+  //   String secure = '1R!ngT0Rul3Them@l!'; // equivalent to char in c
+  //   int secLen = secure.length;
+  //   int randIdx = 0;
+  //   Uint8List pk = Uint8List(4);
+  //   pk[0] = (rand >> 24) & 0xff;
+  //   pk[1] = (rand >> 8) & 0xff;
+  //   pk[2] = (rand >> 16) & 0xff;
+  //   pk[3] = rand & 0xff;
+  //   for (int i = 0; i < secLen; i++) {
+  //     pk[randIdx] ^= secure.codeUnitAt(i);
+  //     if (++randIdx >= 4) randIdx = 0;
+  //   }
+  //   int passKey = (pk[1] << 24) | (pk[3] << 16) | (pk[0] << 8) | pk[2];
+  //   passKey %= 1000000;
+  //   return passKey;
+  // }
 }
