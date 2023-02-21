@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:code/DeviceInfoPage.dart';
+import 'package:code/NewPage.dart';
 import 'package:flutter/services.dart';
 import 'package:json_tree_viewer/json_tree_viewer.dart';
 import 'package:qr_code_scanner/qr_code_scanner.dart';
@@ -48,6 +50,14 @@ class _MyHomePageState extends State<MyHomePage> {
   String? serviceData;
   String? passkey;
   String? advData;
+
+  void _navigateToNewPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => NewPage()),
+    );
+  }
+
   @override
   void dispose() {
     _controller?.dispose();
@@ -203,18 +213,35 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
+  // void connect(BluetoothDevice d) async {
+  //   device = d;
+  //   device?.connect();
+  //   setState(() {
+  //     isConnected = true;
+  //   });
+  // }
+
   void connect(BluetoothDevice d) async {
     device = d;
-    device?.connect();
+    await device?.connect();
     setState(() {
       isConnected = true;
     });
+    // _navigateToNewPage();
   }
+
+  // void disconnect() {
+  //   device?.disconnect();
+  //   setState(() {
+  //     isConnected = false;
+  //   });
+  // }
 
   void disconnect() {
     device?.disconnect();
     setState(() {
       isConnected = false;
+      passkey = null; // reset passkey to null
     });
   }
 
@@ -288,6 +315,10 @@ class _MyHomePageState extends State<MyHomePage> {
                 onPressed: isConnected ? extractPairKey : null,
               ),
             ),
+            Text(
+              'Passkey: ${passkey ?? 'Not generated yet'}',
+              style: TextStyle(fontSize: 20),
+            ),
             SizedBox(height: 20),
             Expanded(
               child: ListView(
@@ -309,49 +340,21 @@ class _MyHomePageState extends State<MyHomePage> {
             if (selectedDevice != null &&
                 scanResults.containsKey(selectedDevice!.id)) ...[
               SizedBox(height: 20),
-              Text(
-                'Advertisment Data:',
-                style: TextStyle(fontSize: 20),
-              ),
-              Text(
-                '${scanResults[selectedDevice!.id]?.advertisementData}',
-                style: TextStyle(fontSize: 20),
-              ),
-              SizedBox(
-                height: 20,
-              ),
-              Text(
-                'Service Data:',
-                style: TextStyle(fontSize: 20),
-              ),
-              Text(
-                '${scanResults[selectedDevice!.id]?.advertisementData?.serviceData}',
-                style: TextStyle(fontSize: 20),
-              ),
-              Container(
-                child: Text(
-                  'Passkey ooo: ${passkey}',
-                  style: TextStyle(fontSize: 20),
-                ),
-              ),
-              SizedBox(
-                height: 30,
-              ),
-              Text(
-                'Scan Results:',
-                style: TextStyle(fontSize: 20),
-              ),
-              Container(
-                child: Text(
-                  'Scan Data: ${{scanResults}}',
-                  style: TextStyle(fontSize: 20),
-                ),
-              ),
-
-              // Container(
-              //   child: JsonTreeViewer(data: {scanResults}),
-              // )
             ],
+            if (isConnected) // Only show the button if isConnected is true
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DeviceInfoPage(
+                        device: selectedDevice!,
+                      ),
+                    ),
+                  );
+                },
+                child: Text('Navigate to Next Page'),
+              ),
           ],
         ),
       ),
