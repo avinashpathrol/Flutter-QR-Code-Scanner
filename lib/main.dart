@@ -85,7 +85,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     scanSubscription = flutterBlue
         .scan(
-          timeout: Duration(seconds: 5),
+          timeout: Duration(seconds: 2),
         )
         .where((scanResult) =>
             scanResult.device.id.toString().toUpperCase() == _mac.toUpperCase())

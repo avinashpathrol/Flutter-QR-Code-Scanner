@@ -38,6 +38,7 @@ dependencies:
   flutter_blue: ^0.8.0
   flutter_json_viewer: ^1.0.1
   json_tree_viewer: ^0.0.2
+  logger: ^1.1.0
 
 
 dev_dependencies:
