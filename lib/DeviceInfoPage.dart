@@ -1,3 +1,5 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -74,11 +76,93 @@ class _DeviceInfoPageState extends State<DeviceInfoPage> {
               if (characteristic.uuid.toString() ==
                   'bf99ace8-16e9-4b40-9c05-acea06a4a29b') {
                 await characteristic.setNotifyValue(true);
+                showDialog(
+                  context: context,
+                  builder: (BuildContext context) {
+                    return AlertDialog(
+                      title: Text("Notify Response"),
+                      content: StreamBuilder<List<int>>(
+                        stream: characteristic.value,
+                        builder: (BuildContext context,
+                            AsyncSnapshot<List<int>> snapshot) {
+                          if (snapshot.hasData) {
+                            List<int> data = snapshot.data!;
+                            if (data.length >= 3 && data[2] == 17) {
+                              return Text(
+                                  "Received notification with user value ${data.toString()}");
+                            } else {
+                              return Text("Waiting for notification...");
+                            }
+                          } else {
+                            return Text("Waiting for notification...");
+                          }
+                        },
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                          },
+                          child: Text("OK"),
+                        ),
+                      ],
+                    );
+                  },
+                );
                 await characteristic.write([0x50, 0xfe]);
-              }
-              if (characteristic.uuid.toString() ==
+                await Future.delayed(Duration(seconds: 1));
+                BluetoothCharacteristic char38db = _services
+                    .expand((service) => service.characteristics)
+                    .firstWhere(
+                        (characteristic) =>
+                            characteristic.uuid.toString() ==
+                            '38db34b0-c66a-4662-b8ad-9a63b5485a9a', orElse: () {
+                  throw Exception('Characteristic not found.');
+                });
+
+                await char38db.setNotifyValue(true);
+                if (char38db != null) {
+                  await char38db.setNotifyValue(true);
+                  showDialog(
+                    context: context,
+                    builder: (BuildContext context) {
+                      return AlertDialog(
+                        title: Text("Notification Enabled"),
+                        content: Text(
+                            "Notification for ${char38db.uuid.toString()} is now enabled."),
+                        actions: [
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+                            },
+                            child: Text("OK"),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                }
+              } else if (characteristic.uuid.toString() ==
                   '38db34b0-c66a-4662-b8ad-9a63b5485a9a') {
                 await characteristic.setNotifyValue(true);
+                showDialog(
+                  context: context,
+                  builder: (BuildContext context) {
+                    return AlertDialog(
+                      title: Text("Notification Enabled"),
+                      content: Text(
+                          "Notification for ${characteristic.uuid.toString()} is now enabled."),
+                      actions: [
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                          },
+                          child: Text("OK"),
+                        ),
+                      ],
+                    );
+                  },
+                );
               } else {
                 List<int> value = await characteristic.read();
                 setState(() {
@@ -168,7 +252,7 @@ class _DeviceInfoPageState extends State<DeviceInfoPage> {
     ByteData firmwareFile;
     try {
       firmwareFile =
-          await rootBundle.load('images/finch2-esp-firmware_v1.0.14.bin');
+          await rootBundle.load('images/finch2-esp-firmware_v1.1.3.bin');
     } catch (e) {
       showDialog(
         context: context,
@@ -257,14 +341,37 @@ class _DeviceInfoPageState extends State<DeviceInfoPage> {
 
   void Reboot() async {
     List<BluetoothService> services = await widget.device.discoverServices();
-    BluetoothCharacteristic? characteristic;
+    BluetoothCharacteristic? characteristic1;
+    BluetoothCharacteristic? characteristic2;
 
     for (BluetoothService service in services) {
       for (BluetoothCharacteristic c in service.characteristics) {
         if (c.uuid.toString() == 'bf99ace8-16e9-4b40-9c05-acea06a4a29b') {
-          characteristic = c;
-          await characteristic.setNotifyValue(true);
-          characteristic.value.listen((value) {
+          characteristic1 = c;
+          await characteristic1.setNotifyValue(true);
+          characteristic1.value.listen((value) async {
+            if (value.length >= 3 && value[2] == 0) {
+              // Send write request with hex code 0x80
+              for (BluetoothCharacteristic c in service.characteristics) {
+                if (c.uuid.toString() ==
+                    '38db34b0-c66a-4662-b8ad-9a63b5485a9a') {
+                  characteristic2 = c;
+                  await characteristic2?.write([0x80]);
+                  break;
+                }
+              }
+            } else if (value.length >= 3 && value[2] == 2) {
+              // Send write request with hex code 0x82
+              for (BluetoothCharacteristic c in service.characteristics) {
+                if (c.uuid.toString() ==
+                    '38db34b0-c66a-4662-b8ad-9a63b5485a9a') {
+                  characteristic2 = c;
+                  await characteristic2?.write([0x82]);
+                  break;
+                }
+              }
+            }
+
             showDialog(
               context: context,
               builder: (BuildContext context) {
@@ -284,16 +391,16 @@ class _DeviceInfoPageState extends State<DeviceInfoPage> {
               },
             );
           });
-          await characteristic.write([0x81, 0xf0]);
+          await characteristic1.write([0x81, 0xf0]);
           break;
         }
       }
-      if (characteristic != null) {
+      if (characteristic1 != null && characteristic2 != null) {
         break;
       }
     }
 
-    if (characteristic == null) {
+    if (characteristic1 == null) {
       showDialog(
         context: context,
         builder: (BuildContext context) {
@@ -301,6 +408,28 @@ class _DeviceInfoPageState extends State<DeviceInfoPage> {
             title: Text("Characteristic Not Found"),
             content: Text(
                 "The characteristic with UUID bf99ace8-16e9-4b40-9c05-acea06a4a29b was not found on this device."),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: Text("OK"),
+              ),
+            ],
+          );
+        },
+      );
+      return;
+    }
+
+    if (characteristic2 == null) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text("Characteristic Not Found"),
+            content: Text(
+                "The characteristic with UUID 38db34b0-c66a-4662-b8ad-9a63b5485a9a was not found on this device."),
             actions: [
               TextButton(
                 onPressed: () {
