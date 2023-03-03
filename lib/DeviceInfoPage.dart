@@ -1,14 +1,19 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:flutter/material.dart';
 import 'package:flutter_blue/flutter_blue.dart';
 import 'package:logger/logger.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'NewPage.dart' as page;
 
 class DeviceInfoPage extends StatefulWidget {
   final BluetoothDevice device;
-  final filePath = '/path/to/file/finch2-esp-firmware_v1.0.14.bin';
+  final filePath = '/path/to/file/finch2-esp-test_v1.0.1.bin';
 
   DeviceInfoPage({required this.device});
 
@@ -69,35 +74,11 @@ class _DeviceInfoPageState extends State<DeviceInfoPage> {
               if (characteristic.uuid.toString() ==
                   'bf99ace8-16e9-4b40-9c05-acea06a4a29b') {
                 await characteristic.setNotifyValue(true);
-                showDialog(
-                  context: context,
-                  builder: (BuildContext context) {
-                    return AlertDialog(
-                      title: Text("Notify Enabled"),
-                      content: Text(
-                          "Notify has been enabled for characteristic with UUID bf99ace8-16e9-4b40-9c05-acea06a4a29b."),
-                      actions: [
-                        TextButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                          },
-                          child: Text("Cancel"),
-                        ),
-                        TextButton(
-                          onPressed: () async {
-                            await characteristic.write([0x50, 0xfe]);
-                            Navigator.pop(context);
-                          },
-                          child: Text("OK"),
-                        ),
-                      ],
-                    );
-                  },
-                ).then((value) async {
-                  if (value == false) {
-                    await characteristic.setNotifyValue(false);
-                  }
-                });
+                await characteristic.write([0x50, 0xfe]);
+              }
+              if (characteristic.uuid.toString() ==
+                  '38db34b0-c66a-4662-b8ad-9a63b5485a9a') {
+                await characteristic.setNotifyValue(true);
               } else {
                 List<int> value = await characteristic.read();
                 setState(() {
@@ -123,6 +104,241 @@ class _DeviceInfoPageState extends State<DeviceInfoPage> {
       _services = services;
       _serviceTiles = tiles;
     });
+  }
+
+  void LFTDATA() async {
+    List<BluetoothService> services = await widget.device.discoverServices();
+    BluetoothCharacteristic? characteristic1;
+
+    BluetoothCharacteristic? characteristic2;
+
+    for (BluetoothService service in services) {
+      for (BluetoothCharacteristic c in service.characteristics) {
+        if (c.uuid.toString() == '38db34b0-c66a-4662-b8ad-9a63b5485a9a') {
+          characteristic1 = c;
+          await characteristic1.setNotifyValue(true);
+          showDialog(
+            context: context,
+            builder: (BuildContext context) {
+              return AlertDialog(
+                title: Text("Notify Enabled"),
+                content: Text(
+                    "Notify has been enabled for characteristic with UUID 38db34b0-c66a-4662-b8ad-9a63b5485a9a."),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                    child: Text("Cancel"),
+                  ),
+                ],
+              );
+            },
+          );
+        } else if (c.uuid.toString() ==
+            'bf99ace8-16e9-4b40-9c05-acea06a4a29b') {
+          characteristic2 = c;
+        }
+      }
+    }
+
+    if (characteristic1 == null) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text("Characteristic Not Found"),
+            content: Text(
+                "The characteristic with UUID 38db34b0-c66a-4662-b8ad-9a63b5485a9a was not found on this device."),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: Text("OK"),
+              ),
+            ],
+          );
+        },
+      );
+      return;
+    }
+
+    // File handling code
+    ByteData firmwareFile;
+    try {
+      firmwareFile =
+          await rootBundle.load('images/finch2-esp-firmware_v1.0.14.bin');
+    } catch (e) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text("File Not Found"),
+            content: Text(
+                "The firmware file was not found in the project directory."),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: Text("OK"),
+              ),
+            ],
+          );
+        },
+      );
+      return;
+    }
+
+    // Get the bytes from the loaded file
+    List<int> bytes = firmwareFile.buffer.asUint8List();
+
+    // Display the filename in the UI
+    setState(() {
+      _characteristicValue = "Sending file: finch2-esp-test_v1.0.1.binn";
+    });
+
+    // Set MTU to increase the amount of data that can be sent
+    await widget.device.requestMtu(512);
+
+// Send each packet to the characteristic
+    int packetSize = 490;
+    int numPackets = (bytes.length / packetSize).ceil();
+    int packetIndex = 0;
+    int _progress = 0;
+    while (packetIndex < numPackets) {
+      int start = packetIndex * packetSize;
+      int end = (packetIndex == numPackets - 1)
+          ? bytes.length
+          : (packetIndex + 1) * packetSize;
+      List<int> packet = bytes.sublist(start, end);
+
+      await characteristic1.write(packet);
+
+      packetIndex++;
+
+      // Update progress
+      setState(() {
+        _progress = (packetIndex / numPackets * 100).toInt();
+      });
+    }
+
+// Send write request to characteristic with UUID 'bf99ace8-16e9-4b40-9c05-acea06a4a29b'
+    BluetoothCharacteristic? writeCharacteristic;
+    for (BluetoothService service in services) {
+      for (BluetoothCharacteristic c in service.characteristics) {
+        if (c.uuid.toString() == 'bf99ace8-16e9-4b40-9c05-acea06a4a29b') {
+          writeCharacteristic = c;
+          await writeCharacteristic.write([0x52, 0xfe]);
+        }
+      }
+    }
+    Reboot();
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Characteristic Not Found"),
+          content: Text(
+              "The characteristic with UUID bf99ace8-16e9-4b40-9c05-acea06a4a29b was not found on this device."),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: Text("OK"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void Reboot() async {
+    List<BluetoothService> services = await widget.device.discoverServices();
+    BluetoothCharacteristic? characteristic;
+
+    for (BluetoothService service in services) {
+      for (BluetoothCharacteristic c in service.characteristics) {
+        if (c.uuid.toString() == 'bf99ace8-16e9-4b40-9c05-acea06a4a29b') {
+          characteristic = c;
+          await characteristic.setNotifyValue(true);
+          characteristic.value.listen((value) {
+            showDialog(
+              context: context,
+              builder: (BuildContext context) {
+                return AlertDialog(
+                  title: Text("Reboot Response"),
+                  content: Text(
+                      "Received notification with value ${value.toString()}"),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                      },
+                      child: Text("OK"),
+                    ),
+                  ],
+                );
+              },
+            );
+          });
+          await characteristic.write([0x81, 0xf0]);
+          break;
+        }
+      }
+      if (characteristic != null) {
+        break;
+      }
+    }
+
+    if (characteristic == null) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text("Characteristic Not Found"),
+            content: Text(
+                "The characteristic with UUID bf99ace8-16e9-4b40-9c05-acea06a4a29b was not found on this device."),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: Text("OK"),
+              ),
+            ],
+          );
+        },
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Reboot"),
+          content: Text("A reboot command has been sent to the device."),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: Text("OK"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<String> getFilePath() async {
+    Directory appDocumentsDirectory = await getApplicationDocumentsDirectory();
+    String filePath =
+        '${appDocumentsDirectory.path}/finch2-esp-firmware_v1.0.14.bin';
+    return filePath;
   }
 
   Future<void> _readCharacteristic() async {
@@ -177,83 +393,19 @@ class _DeviceInfoPageState extends State<DeviceInfoPage> {
     }
     throw Exception('Characteristic not found');
   }
-  // Future<void> _readCharacteristic() async {
-  //   String uuid = 'cf85a57c-5e71-491a-9c4f-2ce109df5c6b';
-  //   // Set MTU to increase the amount of data that can be received
-  //   await widget.device.requestMtu(512);
 
-  //   List<BluetoothService> services = await widget.device.discoverServices();
-  //   BluetoothCharacteristic? notifiableCharacteristic;
-  //   for (BluetoothService service in services) {
-  //     List<BluetoothCharacteristic> characteristics = service.characteristics;
-  //     for (BluetoothCharacteristic characteristic in characteristics) {
-  //       if (characteristic.uuid.toString().toUpperCase() ==
-  //           uuid.toUpperCase()) {
-  //         List<int> value = await characteristic.read();
-  //         setState(() {
-  //           _characteristicValue = String.fromCharCodes(value);
-  //           _fetchedData = _characteristicValue;
+  void downloadAndSaveFile() async {
+    var url =
+        'https://drive.google.com/u/0/uc?id=1KFvzbARDQDyrt1ZoaypDiCigdC7GOg41&export=download';
+    var response = await http.get(Uri.parse(url));
 
-  //           // Parse the JSON and get the value of the first key
-  //           Map<String, dynamic> jsonMap = jsonDecode(_characteristicValue);
-  //           _firstValue = jsonMap.values.first;
+    // Get the app documents directory
+    var appDocumentsDirectory = await getApplicationDocumentsDirectory();
 
-  //           if (_firstValue.compareTo(_versionNumber) < 0) {
-  //             showDialog(
-  //               context: context,
-  //               builder: (context) => AlertDialog(
-  //                 title: Text('Update Firmware?'),
-  //                 content: Text(
-  //                     'A new firmware version ($_versionNumber) is available. Do you want to update?'),
-  //                 actions: [
-  //                   TextButton(
-  //                     onPressed: () {
-  //                       Navigator.of(context).pop();
-  //                     },
-  //                     child: Text('Cancel'),
-  //                   ),
-  //                   TextButton(
-  //                     onPressed: () {
-  //                       // Perform firmware update
-  //                       Navigator.of(context).pop();
-  //                     },
-  //                     child: Text('Update'),
-  //                   ),
-  //                 ],
-  //               ),
-  //             );
-  //           }
-  //         });
-  //         // Turn on notifications for the characteristic
-  //         await characteristic.setNotifyValue(true);
-  //         notifiableCharacteristic = characteristic;
-  //         break;
-  //       } else if (characteristic.properties.notify) {
-  //         notifiableCharacteristic ??= characteristic;
-  //       }
-  //     }
-  //   }
-  //   if (notifiableCharacteristic != null) {
-  //     showDialog(
-  //       context: context,
-  //       builder: (context) => AlertDialog(
-  //         title: Text('Notifiable Characteristic'),
-  //         content: Text(
-  //             'The characteristic with UUID ${notifiableCharacteristic!.uuid} is notifiable. Notifications turned on.'),
-  //         actions: [
-  //           TextButton(
-  //             onPressed: () {
-  //               Navigator.of(context).pop();
-  //             },
-  //             child: Text('Close'),
-  //           ),
-  //         ],
-  //       ),
-  //     );
-  //   } else {
-  //     throw Exception('Characteristic not found');
-  //   }
-  // }
+    // Create the file and write the response to it
+    var file = File('${appDocumentsDirectory.path}/finch2-esp-test_v1.0.1.bin');
+    await file.writeAsBytes(response.bodyBytes);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -305,6 +457,11 @@ class _DeviceInfoPageState extends State<DeviceInfoPage> {
                   : 'No value found',
             ),
             ..._serviceTiles,
+            ElevatedButton(
+                onPressed: () {
+                  LFTDATA();
+                },
+                child: Text('Send data'))
           ],
         ),
       ),
