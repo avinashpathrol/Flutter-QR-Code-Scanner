@@ -3,12 +3,17 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:code/DeviceInfoPage.dart';
 import 'package:code/NewPage.dart';
+import 'package:code/test.dart';
 import 'package:flutter/services.dart';
 import 'package:json_tree_viewer/json_tree_viewer.dart';
 import 'package:qr_code_scanner/qr_code_scanner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue/flutter_blue.dart';
 import 'dart:convert';
+import 'dart:ffi';
+import 'package:uuid/uuid.dart';
+import 'package:hex/hex.dart';
+import 'package:convert/convert.dart';
 
 void main() => runApp(MyApp());
 
@@ -73,43 +78,82 @@ class _MyHomePageState extends State<MyHomePage> {
         if (_result != null) {
           Map<String, dynamic> data = json.decode(_result!.code ?? "df");
           _mac = data['mac'];
+          String macWithoutColons = _mac!.replaceAll(':', '');
+          startScan(macWithoutColons);
         }
       });
     });
   }
 
-  void startScan(String _mac) {
+  // void startScan() {
+  //   setState(() {
+  //     isScanning = true;
+  //   });
+
+  //   scanSubscription = flutterBlue
+  //       .scan(
+  //     timeout: Duration(seconds: 2),
+  //   )
+  //       .listen((scanResult) {
+  //     if (scanResult.device.name == 'Finch2') {
+  //       setState(() {
+  //         scanResults[scanResult.device.id] = scanResult;
+  //         // Extract advertising data
+  //         var advData = scanResult.advertisementData;
+  //         if (advData != null) {
+  //           var manufacturerData = advData.manufacturerData;
+  //           if (manufacturerData != null) {
+  //             var hexData = hex.encode(manufacturerData.values
+  //                 .toList()[0]); // Get the first item from the values list
+  //             print('Manufacturer data: $hexData');
+  //             showDialog(
+  //               context: context,
+  //               builder: (context) => AlertDialog(
+  //                 title: Text('Manufacturer Data'),
+  //                 content: Text(hexData),
+  //                 actions: <Widget>[
+  //                   TextButton(
+  //                     child: Text('OK'),
+  //                     onPressed: () => Navigator.of(context).pop(),
+  //                   ),
+  //                 ],
+  //               ),
+  //             );
+  //           }
+  //         }
+  //       });
+  //     }
+  //   }, onDone: stopScan);
+  // }
+
+  void startScan(String macWithoutColons) {
     setState(() {
       isScanning = true;
     });
 
     scanSubscription = flutterBlue
         .scan(
-          timeout: Duration(seconds: 2),
-        )
-        .where((scanResult) =>
-            scanResult.device.id.toString().toUpperCase() == _mac.toUpperCase())
+      timeout: Duration(seconds: 2),
+    )
         .listen((scanResult) {
-      setState(() {
-        scanResults[scanResult.device.id] = scanResult;
-        // Extract advertising data
+      if (scanResult.device.name == 'Finch2') {
         var advData = scanResult.advertisementData;
         if (advData != null) {
-          var serviceData = advData.serviceData;
-          if (serviceData != null) {
-            var seed = serviceData;
-            String? passkey = getPasskeyFromServiceData(
-                scanResult.advertisementData.serviceData);
-            Clipboard.setData(ClipboardData(text: passkey.toString()));
-            print('Passkey copied to clipboard: $passkey');
-            setState(() {
-              this.passkey = passkey.toString();
-              // this.serviceData = serviceData.toString();
-              // this.advData = serviceData.toString();
-            });
+          var manufacturerData = advData.manufacturerData;
+          if (manufacturerData != null) {
+            var hexData = hex.encode(
+              manufacturerData.values.toList()[0],
+            ); // Get the first item from the values list
+            var macAddress = hexData.replaceAll(':', '').toUpperCase();
+
+            if (macAddress == macWithoutColons.toUpperCase()) {
+              setState(() {
+                scanResults[scanResult.device.id] = scanResult;
+              });
+            }
           }
         }
-      });
+      }
     }, onDone: stopScan);
   }
 
@@ -283,12 +327,18 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ],
             SizedBox(height: 20),
-            Container(
-              child: ElevatedButton(
-                child: Text('Start Scan'),
-                onPressed: isScanning ? null : () => startScan(_mac!),
-              ),
-            ),
+            // Container(
+            //   child: ElevatedButton(
+            //     child: Text('Start Scan'),
+            //     onPressed: isScanning ? null : () => startScan(_mac!),
+            //   ),
+            // ),
+            // Container(
+            //   child: ElevatedButton(
+            //     child: Text('Start Scan'),
+            //     onPressed: isScanning ? null : () => startScan(),
+            //   ),
+            // ),
             Container(
               child: ElevatedButton(
                 child: Text('Stop Scan'),
@@ -331,6 +381,17 @@ class _MyHomePageState extends State<MyHomePage> {
                         ))
                     .toList(),
               ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ScanScreen(),
+                  ),
+                );
+              },
+              child: Text("Scan Screen"),
             ),
             SizedBox(height: 20),
             Text(
