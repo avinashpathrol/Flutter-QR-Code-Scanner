@@ -9,6 +9,10 @@ import 'package:qr_code_scanner/qr_code_scanner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue/flutter_blue.dart';
 import 'dart:convert';
+import 'dart:ffi';
+import 'package:uuid/uuid.dart';
+import 'package:hex/hex.dart';
+import 'package:convert/convert.dart';
 
 void main() => runApp(MyApp());
 
@@ -73,28 +77,38 @@ class _MyHomePageState extends State<MyHomePage> {
         if (_result != null) {
           Map<String, dynamic> data = json.decode(_result!.code ?? "df");
           _mac = data['mac'];
+          String macWithoutColons = _mac!.replaceAll(':', '');
+          startScan(macWithoutColons);
         }
       });
     });
   }
 
-  void startScan(String _mac) {
+  void startScan(String macWithoutColons) {
     setState(() {
       isScanning = true;
     });
-
     scanSubscription = flutterBlue
         .scan(
-          timeout: Duration(seconds: 2),
-        )
-        .where((scanResult) =>
-            scanResult.device.id.toString().toUpperCase() == _mac.toUpperCase())
+      timeout: Duration(seconds: 2),
+    )
         .listen((scanResult) {
-      setState(() {
-        scanResults[scanResult.device.id] = scanResult;
-        // Extract advertising data
+      if (scanResult.device.name == 'Finch2') {
         var advData = scanResult.advertisementData;
         if (advData != null) {
+          var manufacturerData = advData.manufacturerData;
+          if (manufacturerData != null) {
+            var hexData = hex.encode(
+              manufacturerData.values.toList()[0],
+            ); // Get the first item from the values list
+
+            var macAddress = hexData.replaceAll(':', '').toUpperCase();
+            if (macAddress == macWithoutColons.toUpperCase()) {
+              setState(() {
+                scanResults[scanResult.device.id] = scanResult;
+              });
+            }
+          }
           var serviceData = advData.serviceData;
           if (serviceData != null) {
             var seed = serviceData;
@@ -109,7 +123,7 @@ class _MyHomePageState extends State<MyHomePage> {
             });
           }
         }
-      });
+      }
     }, onDone: stopScan);
   }
 
