@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:code/DeviceInfoPage.dart';
 import 'package:code/NewPage.dart';
@@ -9,6 +10,11 @@ import 'package:qr_code_scanner/qr_code_scanner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue/flutter_blue.dart';
 import 'dart:convert';
+import 'dart:ffi';
+import 'package:uuid/uuid.dart';
+import 'package:hex/hex.dart';
+import 'package:convert/convert.dart';
+import 'dart:io';
 
 void main() => runApp(MyApp());
 
@@ -73,28 +79,38 @@ class _MyHomePageState extends State<MyHomePage> {
         if (_result != null) {
           Map<String, dynamic> data = json.decode(_result!.code ?? "df");
           _mac = data['mac'];
+          String macWithoutColons = _mac!.replaceAll(':', '');
+          startScan(macWithoutColons);
         }
       });
     });
   }
 
-  void startScan(String _mac) {
+  void startScan(String macWithoutColons) {
     setState(() {
       isScanning = true;
     });
-
     scanSubscription = flutterBlue
         .scan(
-          timeout: Duration(seconds: 2),
-        )
-        .where((scanResult) =>
-            scanResult.device.id.toString().toUpperCase() == _mac.toUpperCase())
+      timeout: Duration(seconds: 2),
+    )
         .listen((scanResult) {
-      setState(() {
-        scanResults[scanResult.device.id] = scanResult;
-        // Extract advertising data
+      if (scanResult.device.name == 'Finch2') {
         var advData = scanResult.advertisementData;
         if (advData != null) {
+          var manufacturerData = advData.manufacturerData;
+          if (manufacturerData != null) {
+            var hexData = hex.encode(
+              manufacturerData.values.toList()[0],
+            ); // Get the first item from the values list
+
+            var macAddress = hexData.replaceAll(':', '').toUpperCase();
+            if (macAddress == macWithoutColons.toUpperCase()) {
+              setState(() {
+                scanResults[scanResult.device.id] = scanResult;
+              });
+            }
+          }
           var serviceData = advData.serviceData;
           if (serviceData != null) {
             var seed = serviceData;
@@ -109,7 +125,7 @@ class _MyHomePageState extends State<MyHomePage> {
             });
           }
         }
-      });
+      }
     }, onDone: stopScan);
   }
 
@@ -138,19 +154,50 @@ class _MyHomePageState extends State<MyHomePage> {
     return passkeyStr.toString();
   }
 
-  static int getSercureRandom(
-    String? serviceData,
-  ) {
+  // static int getSercureRandom(String? serviceData) {
+  //   int random = 0;
+  //   if (serviceData != null) {
+  //     var serviceDataArray = serviceData.split(':');
+  //     var idArray = serviceDataArray[0].split('-');
+  //     var idFirst = idArray[0];
+  //     var idHex = idFirst.substring(4, 8);
+  //     // : idFirst;
+  //     var childArray = serviceDataArray[1].split(',');
+  //     var childFirst = childArray[0].substring(2, 4);
+  //     var childSecond = childArray[1].substring(1, 3);
+  //     var hex = childSecond + childFirst + idHex;
+  //     // equivalent to Uint32 in c
+  //     print(int.parse(childSecond.toLowerCase(), radix: 16));
+  //     print(int.parse(childFirst.toLowerCase(), radix: 16));
+  //     print(int.parse(childFirst.toLowerCase(), radix: 16));
+  //     print(hex.toLowerCase());
+  //     random = int.parse(hex.toLowerCase(), radix: 16);
+  //     random = random.toUnsigned(32);
+  //     print(random);
+  //   }
+
+  //   return random;
+  // }
+
+  static int getSercureRandom(String? serviceData) {
     int random = 0;
     if (serviceData != null) {
       var serviceDataArray = serviceData.split(':');
       var idArray = serviceDataArray[0].split('-');
       var idFirst = idArray[0];
-      var idHex = idFirst.substring(4, 8);
-      // : idFirst;
       var childArray = serviceDataArray[1].split(',');
       var childFirst = childArray[0].substring(2, 4);
       var childSecond = childArray[1].substring(1, 3);
+      var idHex;
+
+      if (Platform.isAndroid) {
+        idHex = idFirst.substring(4, 8);
+      } else if (Platform.isIOS) {
+        idHex = idFirst;
+      } else {
+        throw Exception('Unsupported platform');
+      }
+
       var hex = childSecond + childFirst + idHex;
       // equivalent to Uint32 in c
       print(int.parse(childSecond.toLowerCase(), radix: 16));
