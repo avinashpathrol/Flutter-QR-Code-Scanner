@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:code/DeviceInfoPage.dart';
 import 'package:code/NewPage.dart';
@@ -13,6 +14,7 @@ import 'dart:ffi';
 import 'package:uuid/uuid.dart';
 import 'package:hex/hex.dart';
 import 'package:convert/convert.dart';
+import 'dart:io';
 
 void main() => runApp(MyApp());
 
@@ -152,19 +154,50 @@ class _MyHomePageState extends State<MyHomePage> {
     return passkeyStr.toString();
   }
 
-  static int getSercureRandom(
-    String? serviceData,
-  ) {
+  // static int getSercureRandom(String? serviceData) {
+  //   int random = 0;
+  //   if (serviceData != null) {
+  //     var serviceDataArray = serviceData.split(':');
+  //     var idArray = serviceDataArray[0].split('-');
+  //     var idFirst = idArray[0];
+  //     var idHex = idFirst.substring(4, 8);
+  //     // : idFirst;
+  //     var childArray = serviceDataArray[1].split(',');
+  //     var childFirst = childArray[0].substring(2, 4);
+  //     var childSecond = childArray[1].substring(1, 3);
+  //     var hex = childSecond + childFirst + idHex;
+  //     // equivalent to Uint32 in c
+  //     print(int.parse(childSecond.toLowerCase(), radix: 16));
+  //     print(int.parse(childFirst.toLowerCase(), radix: 16));
+  //     print(int.parse(childFirst.toLowerCase(), radix: 16));
+  //     print(hex.toLowerCase());
+  //     random = int.parse(hex.toLowerCase(), radix: 16);
+  //     random = random.toUnsigned(32);
+  //     print(random);
+  //   }
+
+  //   return random;
+  // }
+
+  static int getSercureRandom(String? serviceData) {
     int random = 0;
     if (serviceData != null) {
       var serviceDataArray = serviceData.split(':');
       var idArray = serviceDataArray[0].split('-');
       var idFirst = idArray[0];
-      var idHex = idFirst.substring(4, 8);
-      // : idFirst;
       var childArray = serviceDataArray[1].split(',');
       var childFirst = childArray[0].substring(2, 4);
       var childSecond = childArray[1].substring(1, 3);
+      var idHex;
+
+      if (Platform.isAndroid) {
+        idHex = idFirst.substring(4, 8);
+      } else if (Platform.isIOS) {
+        idHex = idFirst;
+      } else {
+        throw Exception('Unsupported platform');
+      }
+
       var hex = childSecond + childFirst + idHex;
       // equivalent to Uint32 in c
       print(int.parse(childSecond.toLowerCase(), radix: 16));
