@@ -15,6 +15,7 @@ import 'package:uuid/uuid.dart';
 import 'package:hex/hex.dart';
 import 'package:convert/convert.dart';
 import 'dart:io';
+import 'package:permission_handler/permission_handler.dart';
 
 void main() => runApp(MyApp());
 
@@ -74,59 +75,59 @@ class _MyHomePageState extends State<MyHomePage> {
   void _onQRViewCreated(QRViewController controller) {
     _controller = controller;
     controller.scannedDataStream.listen((barcode) {
-      setState(() {
+      setState(() async {
         _result = barcode;
         if (_result != null) {
           Map<String, dynamic> data = json.decode(_result!.code ?? "df");
           _mac = data['mac'];
           String macWithoutColons = _mac!.replaceAll(':', '');
+          var status = await Permission.location.status;
+          if (!status.isGranted) {
+            status = await Permission.location.request();
+            if (!status.isGranted) return;
+          }
           startScan(macWithoutColons);
         }
       });
     });
   }
 
-  void startScan(String macWithoutColons) {
+  Future<bool> startScan(String macWithoutColons) async {
+    var bluetoothConnectStatus =
+        Permission.bluetoothConnect.request().isGranted;
     setState(() {
       isScanning = true;
     });
-    scanSubscription = flutterBlue
-        .scan(
-      timeout: Duration(seconds: 2),
-    )
-        .listen((scanResult) {
-      if (scanResult.device.name == 'Finch2') {
+    bool deviceFound = false;
+    scanSubscription = flutterBlue.scan(timeout: Duration(seconds: 2)).listen(
+      (scanResult) {
+        var device = scanResult.device;
         var advData = scanResult.advertisementData;
         if (advData != null) {
           var manufacturerData = advData.manufacturerData;
           if (manufacturerData != null) {
-            var hexData = hex.encode(
-              manufacturerData.values.toList()[0],
-            ); // Get the first item from the values list
-
+            var hexData = hex.encode(manufacturerData.values.toList()[0]);
             var macAddress = hexData.replaceAll(':', '').toUpperCase();
             if (macAddress == macWithoutColons.toUpperCase()) {
+              stopScan();
               setState(() {
-                scanResults[scanResult.device.id] = scanResult;
-              });
+                selectedDevice = device; // Set the selectedDevice here
+              }); // Call the new connect function
+              deviceFound = true;
+              return;
             }
           }
-          var serviceData = advData.serviceData;
-          if (serviceData != null) {
-            var seed = serviceData;
-            String? passkey = getPasskeyFromServiceData(
-                scanResult.advertisementData.serviceData);
-            Clipboard.setData(ClipboardData(text: passkey.toString()));
-            print('Passkey copied to clipboard: $passkey');
-            setState(() {
-              this.passkey = passkey.toString();
-              // this.serviceData = serviceData.toString();
-              // this.advData = serviceData.toString();
-            });
-          }
         }
-      }
-    }, onDone: stopScan);
+      },
+      onDone: () {
+        scanSubscription?.cancel();
+        scanSubscription = null;
+        setState(() {
+          isScanning = false;
+        });
+      },
+    );
+    return deviceFound; // return the value here
   }
 
   static String getNiceHexArray(List<int> bytes) {
@@ -154,31 +155,6 @@ class _MyHomePageState extends State<MyHomePage> {
     return passkeyStr.toString();
   }
 
-  // static int getSercureRandom(String? serviceData) {
-  //   int random = 0;
-  //   if (serviceData != null) {
-  //     var serviceDataArray = serviceData.split(':');
-  //     var idArray = serviceDataArray[0].split('-');
-  //     var idFirst = idArray[0];
-  //     var idHex = idFirst.substring(4, 8);
-  //     // : idFirst;
-  //     var childArray = serviceDataArray[1].split(',');
-  //     var childFirst = childArray[0].substring(2, 4);
-  //     var childSecond = childArray[1].substring(1, 3);
-  //     var hex = childSecond + childFirst + idHex;
-  //     // equivalent to Uint32 in c
-  //     print(int.parse(childSecond.toLowerCase(), radix: 16));
-  //     print(int.parse(childFirst.toLowerCase(), radix: 16));
-  //     print(int.parse(childFirst.toLowerCase(), radix: 16));
-  //     print(hex.toLowerCase());
-  //     random = int.parse(hex.toLowerCase(), radix: 16);
-  //     random = random.toUnsigned(32);
-  //     print(random);
-  //   }
-
-  //   return random;
-  // }
-
   static int getSercureRandom(String? serviceData) {
     int random = 0;
     if (serviceData != null) {
@@ -188,15 +164,8 @@ class _MyHomePageState extends State<MyHomePage> {
       var childArray = serviceDataArray[1].split(',');
       var childFirst = childArray[0].substring(2, 4);
       var childSecond = childArray[1].substring(1, 3);
-      var idHex;
 
-      if (Platform.isAndroid) {
-        idHex = idFirst.substring(4, 8);
-      } else if (Platform.isIOS) {
-        idHex = idFirst;
-      } else {
-        throw Exception('Unsupported platform');
-      }
+      var idHex = (Platform.isAndroid) ? idFirst.substring(4, 8) : idFirst;
 
       var hex = childSecond + childFirst + idHex;
       // equivalent to Uint32 in c
@@ -250,8 +219,6 @@ class _MyHomePageState extends State<MyHomePage> {
     return passkey;
   }
 
-//  00006a89-0000-1000-8000-00805f9b34fb:[177,70]
-
   void stopScan() {
     scanSubscription?.cancel();
     scanSubscription = null;
@@ -259,14 +226,6 @@ class _MyHomePageState extends State<MyHomePage> {
       isScanning = false;
     });
   }
-
-  // void connect(BluetoothDevice d) async {
-  //   device = d;
-  //   device?.connect();
-  //   setState(() {
-  //     isConnected = true;
-  //   });
-  // }
 
   void connect(BluetoothDevice d) async {
     device = d;
@@ -277,28 +236,12 @@ class _MyHomePageState extends State<MyHomePage> {
     // _navigateToNewPage();
   }
 
-  // void disconnect() {
-  //   device?.disconnect();
-  //   setState(() {
-  //     isConnected = false;
-  //   });
-  // }
-
   void disconnect() {
     device?.disconnect();
     setState(() {
       isConnected = false;
       passkey = null; // reset passkey to null
     });
-  }
-
-  void extractPairKey() async {
-    try {
-      await device!.requestMtu(23);
-      print('MTU Requested');
-    } catch (e) {
-      print('Error Requesting MTU: $e');
-    }
   }
 
   @override
@@ -356,12 +299,12 @@ class _MyHomePageState extends State<MyHomePage> {
                 onPressed: isConnected ? disconnect : null,
               ),
             ),
-            Container(
-              child: ElevatedButton(
-                child: Text('Extract Pair Key'),
-                onPressed: isConnected ? extractPairKey : null,
-              ),
-            ),
+            // Container(
+            //   child: ElevatedButton(
+            //     child: Text('Extract Pair Key'),
+            //     onPressed: isConnected ? extractPairKey : null,
+            //   ),
+            // ),
             Text(
               'Passkey: ${passkey ?? 'Not generated yet'}',
               style: TextStyle(fontSize: 20),

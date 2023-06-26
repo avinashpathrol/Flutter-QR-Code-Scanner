@@ -252,7 +252,7 @@ class _DeviceInfoPageState extends State<DeviceInfoPage> {
     ByteData firmwareFile;
     try {
       firmwareFile =
-          await rootBundle.load('images/finch2-esp-firmware_v1.1.3.bin');
+          await rootBundle.load('images/finch2-esp-firmware_v1.1.17.bin');
     } catch (e) {
       showDialog(
         context: context,
