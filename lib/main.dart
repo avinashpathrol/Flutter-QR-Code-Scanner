@@ -95,6 +95,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<bool> startScan(String macWithoutColons) async {
     var bluetoothConnectStatus =
         Permission.bluetoothConnect.request().isGranted;
+    Permission.bluetoothScan.request().isGranted;
     setState(() {
       isScanning = true;
     });
